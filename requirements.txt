@@ -10,6 +10,9 @@ Pillow>=9.0.0
 insightface>=0.7.3
 onnxruntime>=1.12.0
 # For GPU support, use instead: onnxruntime-gpu>=1.12.0
+# For CUDA 13 (e.g. Arch Linux / CachyOS), use the nightly build:
+#   pip install coloredlogs flatbuffers numpy packaging protobuf sympy
+#   pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-13-nightly/pypi/simple/ onnxruntime-gpu
 
 # GUI Framework
 PyQt6>=6.4.0

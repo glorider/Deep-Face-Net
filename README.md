@@ -73,6 +73,10 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+> [!TIP]
+> For **GPU acceleration**, install `onnxruntime-gpu` instead of `onnxruntime`.
+> If you're on **CUDA 13** (common on Arch Linux / CachyOS), see the [Troubleshooting](#%EF%B8%8F-troubleshooting) section below.
+
 ### 4. Download Models
 
 The application requires pre-trained models. Download them and place in the `models/` directory:
@@ -224,6 +228,22 @@ User preferences (working directory, etc.) are saved in `~/.deepfacenet_settings
 - **Lighting**: Significant lighting differences may affect quality
 - **Multiple Faces**: Swaps all detected faces in the frame
 - **Video Processing**: Large videos may take considerable time to process
+
+---
+
+## 🛠️ Troubleshooting
+
+### GPU / CUDA 13 Support
+
+The default `onnxruntime-gpu` package on PyPI may not support **CUDA 13** yet. If face swapping fails or falls back to CPU on systems running CUDA 13 (e.g., **Arch Linux / CachyOS**), install the nightly build instead:
+
+```bash
+# Install required dependencies
+pip install coloredlogs flatbuffers numpy packaging protobuf sympy
+
+# Install onnxruntime-gpu nightly with CUDA 13 support
+pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-13-nightly/pypi/simple/ onnxruntime-gpu
+```
 
 ---
 
