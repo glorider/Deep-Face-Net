@@ -1,25 +1,14 @@
-# Deep Face Net - Requirements
-# Python 3.8+
-
-# Core Dependencies
 numpy>=1.21.0
 opencv-python>=4.5.0
 Pillow>=9.0.0
 
-# Deep Learning & Face Processing
 insightface>=0.7.3
-onnxruntime>=1.12.0
-# For GPU support, use instead: onnxruntime-gpu>=1.12.0
+onnxruntime-gpu==1.22.0
 # For CUDA 13 (e.g. Arch Linux / CachyOS), use the nightly build:
 #   pip install coloredlogs flatbuffers numpy packaging protobuf sympy
 #   pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-13-nightly/pypi/simple/ onnxruntime-gpu
 
-# GUI Framework
 PyQt6>=6.4.0
 
-# Optional: Virtual Camera Support
-# Uncomment if you want virtual camera output
-# pyvirtualcam>=0.10.0
 
-# Utilities
 tqdm>=4.64.0
