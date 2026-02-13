@@ -13,6 +13,9 @@
 
 </div>
 
+<img width="1204" height="933" alt="image" src="https://github.com/user-attachments/assets/3f31181b-ba2c-4297-8795-79ae6a1c4791" />
+<img width="1202" height="934" alt="image" src="https://github.com/user-attachments/assets/8e1ce2f7-ec68-4511-9b62-9de4cb7d85fd" />
+
 ---
 
 ## 🌟 Features
