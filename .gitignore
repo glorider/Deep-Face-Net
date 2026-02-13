@@ -6,6 +6,8 @@ __pycache__/
 eggs/
 .eggs/
 *.egg-info/
+build/
+dist/
 .installed.cfg
 *.egg
 
@@ -115,7 +117,6 @@ dmypy.json
 # Models
 models/*
 !models/README.md
-!models/detector.tflite
 
 *.mp4
 *.avi

@@ -1,1 +1,0 @@
-"""Qt Deepfake Application Package"""
