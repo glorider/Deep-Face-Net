@@ -303,11 +303,3 @@ This project uses the following open-source technologies:
 For questions, suggestions, or issues, please open an issue on GitHub.
 
 ---
-
-<div align="center">
-
-**Made with love by the Deep Face Net Team**
-
-Star this repo if you find it useful!
-
-</div>
