@@ -2,7 +2,6 @@
 
 <div align="center">
 
-<img width="150" height="225" alt="Adobe Express - file" src="https://github.com/user-attachments/assets/bfdb7259-cf7e-48db-a0a1-b9368e60fd02" />
 
 ![Deep Face Net](https://img.shields.io/badge/Deep%20Face%20Net-Advanced%20Face%20Swapping-blue?style=for-the-badge)
 ![Python](https://img.shields.io/badge/Python-3.8+-green?style=for-the-badge&logo=python)
@@ -12,6 +11,8 @@
 **A professional real-time face swapping application with both GUI and CLI support**
 
 [Features](#features) • [Installation](#installation) • [Usage](#usage) • [Screenshots](#screenshots) • [License](#license)
+
+<img width="150" height="225" alt="Adobe Express - file" src="https://github.com/user-attachments/assets/bfdb7259-cf7e-48db-a0a1-b9368e60fd02" />
 
 </div>
 
