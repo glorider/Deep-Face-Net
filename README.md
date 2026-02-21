@@ -1,4 +1,5 @@
-# Deep Face Net
+# Deep Face Net ![icon](https://github.com/user-attachments/assets/08bf89b8-39c3-474d-b8a6-788164be2657)
+
 
 <div align="center">
 
@@ -12,7 +13,6 @@
 
 [Features](#features) • [Installation](#installation) • [Usage](#usage) • [Screenshots](#screenshots) • [License](#license)
 
-<img width="150" height="225" alt="Adobe Express - file" src="https://github.com/user-attachments/assets/bfdb7259-cf7e-48db-a0a1-b9368e60fd02" />
 
 </div>
 
