@@ -1,6 +1,8 @@
 # Deep Face Net
 
+<div align="center">
 <img width="150" height="150" alt="logo" src="https://github.com/user-attachments/assets/53e79f4c-ba3d-4589-b8b6-5f33fbcbd92d" />
+</div>
 
 <div align="center">
 
