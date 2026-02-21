@@ -4,18 +4,40 @@ import cv2
 import numpy as np
 from PyQt6.QtCore import QThread, pyqtSignal
 from core.face_analyser import get_face_analyser
-from core.engine.face_swapper import swap_face
+from core.engine.face_swapper import swap_face, detect_and_swap
 from core.engine.face_masking import (
     get_mouth_mask_without_poisson,
     get_mouth_mask_with_poisson,
     get_mask_center,
 )
+from concurrent.futures import ThreadPoolExecutor
+
+
+def _detect_and_swap_with_mask(source_face, frame, face_analyser):
+    faces = face_analyser.get(frame)
+    face_count = len(faces)
+    if face_count > 0:
+        for face in faces:
+            mask = get_mouth_mask_with_poisson(frame.shape, face.landmark_2d_106)
+            swapped = swap_face(source_face, face, frame)
+
+            if mask is not None:
+                center = get_mask_center(mask, frame.shape)
+                frame = cv2.seamlessClone(
+                    src=frame,
+                    dst=swapped,
+                    mask=mask,
+                    p=center,
+                    flags=cv2.NORMAL_CLONE,
+                )
+            else:
+                frame = swapped
+    return frame, face_count
 
 
 class VideoThread(QThread):
     """Worker thread for video capture and face swapping"""
 
-    # Signals for thread-safe communication
     frame_ready = pyqtSignal(np.ndarray)
     fps_update = pyqtSignal(float)
     face_count_update = pyqtSignal(int)
@@ -26,10 +48,15 @@ class VideoThread(QThread):
         self.camera_index = camera_index
         self.running = False
         self.swap_enabled = False
-        self.mouth_mask_enabled = False  # NEW: Mouth mask toggle
+        self.mouth_mask_enabled = False
         self.source_face = None
         self.cap = None
         self.face_analyser = None
+
+        self._executor = ThreadPoolExecutor(max_workers=2)
+        self._pending_future = None
+        self._last_result = None
+        self._last_face_count = 0
 
     def set_source_face(self, source_face):
         """Set the source face for swapping"""
@@ -69,45 +96,39 @@ class VideoThread(QThread):
                     self.error_occurred.emit("Failed to read frame from camera")
                     break
 
-                # Flip frame horizontally for mirror effect
-                # frame = cv2.flip(frame, 1)
-
                 try:
-                    # Detect faces in frame
-                    faces = self.face_analyser.get(frame)
-                    self.face_count_update.emit(len(faces))
-
-                    # Apply face swapping if enabled and source face is set
                     if (
                         self.swap_enabled
                         and self.source_face is not None
-                        and len(faces) > 0
                     ):
-                        for face in faces:
-                            # Apply mouth masking if enabled
+                        if self._pending_future is None or self._pending_future.done():
+                            if self._pending_future is not None and self._pending_future.done():
+                                result = self._pending_future.result()
+                                if result is not None:
+                                    self._last_result, self._last_face_count = result
+
                             if self.mouth_mask_enabled:
-                                mask = get_mouth_mask_with_poisson(
-                                    frame.shape, face.landmark_2d_106
+                                self._pending_future = self._executor.submit(
+                                    _detect_and_swap_with_mask,
+                                    self.source_face,
+                                    frame.copy(),
+                                    self.face_analyser,
                                 )
-                                swapped = swap_face(self.source_face, face, frame)
-
-                                if mask is not None:
-                                    center = get_mask_center(mask, frame.shape)
-
-                                    frame = cv2.seamlessClone(
-                                        src=frame,
-                                        dst=swapped,
-                                        mask=mask,
-                                        p=center,
-                                        flags=cv2.NORMAL_CLONE,
-                                    )
-                                else:
-                                    frame = swapped
                             else:
-                                # Regular face swap without masking
-                                frame = swap_face(self.source_face, face, frame)
+                                self._pending_future = self._executor.submit(
+                                    detect_and_swap,
+                                    self.source_face,
+                                    frame.copy(),
+                                    self.face_analyser,
+                                )
+
+                        if self._last_result is not None:
+                            frame = self._last_result
+                        self.face_count_update.emit(self._last_face_count)
+
                     else:
-                        # Draw bounding boxes around detected faces
+                        faces = self.face_analyser.get(frame)
+                        self.face_count_update.emit(len(faces))
                         for face in faces:
                             bbox = face.bbox.astype(int)
                             cv2.rectangle(
@@ -119,15 +140,15 @@ class VideoThread(QThread):
                             )
 
                 except Exception as e:
-                    # Log error instead of silently ignoring
                     import traceback
+
                     print(f"[Face Swap Error] {e}")
                     traceback.print_exc()
 
-                # Emit processed frame
+
                 self.frame_ready.emit(frame)
 
-                # Update FPS
+                # FPS
                 fps = fps_counter.update()
                 if fps > 0:
                     self.fps_update.emit(fps)
@@ -146,6 +167,7 @@ class VideoThread(QThread):
         """Release resources"""
         if self.cap is not None:
             self.cap.release()
+        self._executor.shutdown(wait=False)
 
 
 class FPSCounter:
@@ -170,3 +192,4 @@ class FPSCounter:
             avg_time = sum(self.frame_times) / len(self.frame_times)
             return 1.0 / avg_time if avg_time > 0 else 0
         return 0
+

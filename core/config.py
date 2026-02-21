@@ -13,6 +13,9 @@ SWAPPER_MODEL = (
     MODELS_DIR / "inswapper_128.onnx"
 )  # higher model inswapper_128_fp16.onnx
 
+INSIGHTFACE_DIR = Path.home() / ".insightface" / "models"
+BUFFALO_L_DIR = INSIGHTFACE_DIR / "buffalo_l"
+
 # ---------------- Application Settings ----------------
 
 # Camera settings
