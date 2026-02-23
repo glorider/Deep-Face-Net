@@ -39,7 +39,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QScrollArea,
 )
-from PyQt6.QtCore import Qt, QTimer, QUrl, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QUrl, QThread, pyqtSignal, PYQT_VERSION_STR, qVersion
 from PyQt6.QtGui import QImage, QPixmap, QFont, QDesktopServices, QIcon
 
 from app.video_thread import VideoThread
@@ -305,6 +305,11 @@ class DeepfakeApp(QMainWindow):
         self.setup_models_tab()
         self.models_tab_index = self.tabs.addTab(self.models_tab, "Models")
         self.check_models_on_startup()
+
+        # Tab 4: About
+        self.about_tab = QWidget()
+        self.setup_about_tab()
+        self.tabs.addTab(self.about_tab, "About")
 
         # Status bar
         self.status_bar = QStatusBar()
@@ -1723,6 +1728,133 @@ class DeepfakeApp(QMainWindow):
             self.working_dir = dialog.get_working_dir()
             self.save_settings()
             self.status_label.setText(f"Working directory updated: {Path(self.working_dir).name}")
+
+    def setup_about_tab(self):
+        """Setup the About tab with app information"""
+        layout = QVBoxLayout(self.about_tab)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Scroll area so it works on small screens
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+
+        content = QWidget()
+        inner = QVBoxLayout(content)
+        inner.setSpacing(16)
+        inner.setContentsMargins(40, 40, 40, 40)
+
+        # Centre everything
+        inner.addStretch()
+
+        # App icon
+        icon_path = Path(__file__).parent.parent / "assets" / "icon.png"
+        if icon_path.exists():
+            icon_label = QLabel()
+            pixmap = QPixmap(str(icon_path)).scaled(
+                96, 96, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            icon_label.setPixmap(pixmap)
+            icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            icon_label.setStyleSheet("border: none;")
+            inner.addWidget(icon_label)
+
+        # App name
+        name_label = QLabel("Deep Face Net")
+        name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        name_label.setStyleSheet(
+            "font-size: 28px; font-weight: bold; color: #ffffff;"
+        )
+        inner.addWidget(name_label)
+
+        # Version badge
+        version_label = QLabel("v2.1.0")
+        version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        version_label.setStyleSheet(
+            "font-size: 14px; color: #4CAF50; font-weight: bold;"
+        )
+        inner.addWidget(version_label)
+
+        # Description
+        desc_label = QLabel("Advanced Real-time Face Swapping Application")
+        desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("font-size: 13px; color: #aaa;")
+        inner.addWidget(desc_label)
+
+        # Separator
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFixedWidth(300)
+        sep.setStyleSheet("background-color: #444; max-height: 1px;")
+        inner.addWidget(sep, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        # Info card
+        info_card = QFrame()
+        info_card.setFixedWidth(360)
+        info_card.setStyleSheet("""
+            QFrame {
+                background-color: #2a2a2a;
+                border: 1px solid #444;
+                border-radius: 10px;
+                padding: 6px;
+            }
+        """)
+        info_layout = QVBoxLayout(info_card)
+        info_layout.setSpacing(8)
+        info_layout.setContentsMargins(20, 16, 20, 16)
+
+        for key_text, val_text in [
+            ("Developer", "MIDHUNGRAJ"),
+            ("Python", f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"),
+            ("Qt", qVersion()),
+            ("PyQt6", PYQT_VERSION_STR),
+            ("License", "MIT"),
+        ]:
+            row = QHBoxLayout()
+            key = QLabel(key_text)
+            key.setStyleSheet("color: #888; font-size: 12px; border: none;")
+            key.setFixedWidth(80)
+            val = QLabel(val_text)
+            val.setStyleSheet("color: #fff; font-size: 12px; font-weight: bold; border: none;")
+            row.addWidget(key)
+            row.addWidget(val)
+            row.addStretch()
+            info_layout.addLayout(row)
+
+        inner.addWidget(info_card, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        # GitHub button
+        github_btn = QPushButton("  GitHub Repository")
+        github_btn.setFixedWidth(260)
+        github_btn.setFixedHeight(40)
+        github_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        github_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl("https://github.com/MIDHUNGRAJ/Deep-Face-Net")
+            )
+        )
+        github_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #333;
+                color: #58a6ff;
+                border: 1px solid #444;
+                border-radius: 8px;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #444;
+                border-color: #58a6ff;
+            }
+        """)
+        inner.addWidget(github_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        inner.addStretch()
+
+        scroll.setWidget(content)
+        layout.addWidget(scroll)
 
     def closeEvent(self, event):
         """Handle application close event"""
