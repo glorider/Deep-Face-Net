@@ -97,12 +97,12 @@ class VideoThread(QThread):
                     break
 
                 try:
-                    if (
-                        self.swap_enabled
-                        and self.source_face is not None
-                    ):
+                    if self.swap_enabled and self.source_face is not None:
                         if self._pending_future is None or self._pending_future.done():
-                            if self._pending_future is not None and self._pending_future.done():
+                            if (
+                                self._pending_future is not None
+                                and self._pending_future.done()
+                            ):
                                 result = self._pending_future.result()
                                 if result is not None:
                                     self._last_result, self._last_face_count = result
@@ -144,7 +144,6 @@ class VideoThread(QThread):
 
                     print(f"[Face Swap Error] {e}")
                     traceback.print_exc()
-
 
                 self.frame_ready.emit(frame)
 
@@ -192,4 +191,3 @@ class FPSCounter:
             avg_time = sum(self.frame_times) / len(self.frame_times)
             return 1.0 / avg_time if avg_time > 0 else 0
         return 0
-
