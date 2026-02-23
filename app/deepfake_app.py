@@ -4,9 +4,11 @@ A professional PyQt6 application for live deepfake face swapping
 """
 
 import sys
+import os
 import cv2
 import numpy as np
 import json
+import zipfile
 from pathlib import Path
 
 # Try to import pyvirtualcam (optional dependency)
@@ -38,12 +40,74 @@ from PyQt6.QtWidgets import (
     QScrollArea,
 )
 from PyQt6.QtCore import Qt, QTimer, QUrl, QThread, pyqtSignal
-from PyQt6.QtGui import QImage, QPixmap, QFont, QDesktopServices
+from PyQt6.QtGui import QImage, QPixmap, QFont, QDesktopServices, QIcon
 
 from app.video_thread import VideoThread
 from app.drag_drop_widget import DragDropWidget
 from app.file_processing_thread import FileProcessingThread
 from core.face_analyser import get_face_analyser
+from download_models import MODELS, check_model_status, get_model_path, format_size
+
+
+class ModelDownloadThread(QThread):
+    """Background thread for downloading a model file"""
+
+    progress_update = pyqtSignal(int)  # percentage 0-100
+    download_complete = pyqtSignal(str)  # model_name
+    download_error = pyqtSignal(str, str)  # model_name, error_msg
+    status_update = pyqtSignal(str)  # status text
+
+    def __init__(self, model_name, model_info):
+        super().__init__()
+        self.model_name = model_name
+        self.model_info = model_info
+        self._cancelled = False
+
+    def run(self):
+        try:
+            import requests
+
+            url = self.model_info["url"]
+            dest_path = get_model_path(self.model_name)
+
+            if self.model_info["location"] == "insightface":
+                # Download zip and extract
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                zip_path = dest_path.parent / f"{self.model_name}.zip"
+                self._download_file(requests, url, zip_path)
+                if self._cancelled:
+                    return
+                self.status_update.emit("Extracting...")
+                with zipfile.ZipFile(zip_path, 'r') as z:
+                    z.extractall(dest_path.parent)
+                zip_path.unlink(missing_ok=True)
+            else:
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                self._download_file(requests, url, dest_path)
+
+            if not self._cancelled:
+                self.download_complete.emit(self.model_name)
+        except Exception as e:
+            self.download_error.emit(self.model_name, str(e))
+
+    def _download_file(self, requests, url, dest_path):
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        total_size = int(response.headers.get("content-length", 0))
+        downloaded = 0
+        block_size = 8192
+
+        with open(dest_path, "wb") as f:
+            for chunk in response.iter_content(block_size):
+                if self._cancelled:
+                    return
+                f.write(chunk)
+                downloaded += len(chunk)
+                if total_size > 0:
+                    self.progress_update.emit(int(downloaded * 100 / total_size))
+
+    def cancel(self):
+        self._cancelled = True
 
 
 class CameraDetectionThread(QThread):
@@ -178,6 +242,11 @@ class DeepfakeApp(QMainWindow):
         self.setWindowTitle("Deep Face Net - Advanced Face Swapping")
         self.setGeometry(100, 100, 1200, 800)
 
+        # Set app icon
+        icon_path = Path(__file__).parent.parent / "assets" / "icon.png"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
+
         # Application state
         self.source_image = None
         self.source_face = None
@@ -194,6 +263,10 @@ class DeepfakeApp(QMainWindow):
         self.target_file_path = None
         self.processing_thread = None
         self.last_output_path = None
+        
+        # Model download state
+        self._active_downloads = {}  # model_name -> ModelDownloadThread
+        self._model_cards = {}  # model_name -> dict of widgets
         
         # Settings
         self.settings_file = Path.home() / ".deepfacenet_settings.json"
@@ -226,6 +299,12 @@ class DeepfakeApp(QMainWindow):
         self.offline_tab = QWidget()
         self.setup_offline_tab()
         self.tabs.addTab(self.offline_tab, "Offline Processing")
+
+        # Tab 3: Models
+        self.models_tab = QWidget()
+        self.setup_models_tab()
+        self.models_tab_index = self.tabs.addTab(self.models_tab, "Models")
+        self.check_models_on_startup()
 
         # Status bar
         self.status_bar = QStatusBar()
@@ -425,6 +504,335 @@ class DeepfakeApp(QMainWindow):
         process_layout.addWidget(status_group)
         
         layout.addLayout(process_layout, stretch=1)
+
+    # --- Models Tab Methods ---
+
+    def setup_models_tab(self):
+        """Setup the Models download tab"""
+        layout = QVBoxLayout(self.models_tab)
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # Header
+        header = QLabel("Model Manager")
+        header.setStyleSheet("font-size: 18px; font-weight: bold; color: #fff; margin-bottom: 5px;")
+        layout.addWidget(header)
+
+        subtitle = QLabel("Download and manage the AI models required for face swapping.")
+        subtitle.setStyleSheet("color: #aaa; font-size: 12px; margin-bottom: 10px;")
+        layout.addWidget(subtitle)
+
+        # Scroll area for model cards
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+
+        cards_widget = QWidget()
+        cards_layout = QVBoxLayout(cards_widget)
+        cards_layout.setSpacing(12)
+
+        # Show all models
+        for model_name, model_info in MODELS.items():
+            card = self._create_model_card(model_name, model_info)
+            cards_layout.addWidget(card)
+
+        cards_layout.addStretch()
+        scroll.setWidget(cards_widget)
+        layout.addWidget(scroll)
+
+        # Refresh button
+        refresh_btn = QPushButton("Refresh Status")
+        refresh_btn.setFixedHeight(36)
+        refresh_btn.setStyleSheet("background-color: #555; max-width: 200px;")
+        refresh_btn.clicked.connect(self.refresh_model_status)
+        layout.addWidget(refresh_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+
+    def _create_model_card(self, model_name, model_info):
+        """Create a single model card widget"""
+        is_downloaded, path, current_size = check_model_status(model_name)
+        expected_size = model_info.get("size", 0)
+        is_required = model_info.get("required", False)
+
+        card = QFrame()
+        card.setStyleSheet("""
+            QFrame {
+                background-color: #2a2a2a;
+                border: 2px solid #444;
+                border-radius: 8px;
+                padding: 4px;
+            }
+        """)
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(2)
+        card_layout.setContentsMargins(10, 8, 10, 8)
+
+        # Row 1: Name + status icon + required badge
+        top_row = QHBoxLayout()
+
+        if is_downloaded:
+            status_icon = QLabel("[OK]")
+            status_icon.setStyleSheet("font-size: 12px; font-weight: bold; color: #4CAF50; border: none;")
+        else:
+            status_icon = QLabel("[!!]")
+            status_icon.setStyleSheet("font-size: 12px; font-weight: bold; color: #FF9800; border: none;")
+        status_icon.setFixedWidth(30)
+        top_row.addWidget(status_icon)
+
+        name_label = QLabel(model_name)
+        name_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #fff; border: none;")
+        top_row.addWidget(name_label)
+
+        if is_required:
+            req_badge = QLabel("REQUIRED")
+            req_badge.setStyleSheet("""
+                background-color: #f44336;
+                color: white;
+                font-size: 10px;
+                font-weight: bold;
+                padding: 2px 8px;
+                border-radius: 4px;
+                border: none;
+            """)
+            req_badge.setFixedHeight(20)
+            top_row.addWidget(req_badge)
+        else:
+            opt_badge = QLabel("OPTIONAL")
+            opt_badge.setStyleSheet("""
+                background-color: #555;
+                color: #ccc;
+                font-size: 10px;
+                font-weight: bold;
+                padding: 2px 8px;
+                border-radius: 4px;
+                border: none;
+            """)
+            opt_badge.setFixedHeight(20)
+            top_row.addWidget(opt_badge)
+
+        top_row.addStretch()
+        card_layout.addLayout(top_row)
+
+        # Row 2: Description + size
+        desc_label = QLabel(model_info.get("description", ""))
+        desc_label.setStyleSheet("color: #aaa; font-size: 11px; border: none;")
+        card_layout.addWidget(desc_label)
+
+        size_text = f"Size: {format_size(expected_size)}"
+        if is_downloaded:
+            size_text += f"  |  Downloaded: {format_size(current_size)}"
+            if path:
+                size_text += f"  |  {path}"
+        size_label = QLabel(size_text)
+        size_label.setStyleSheet("color: #777; font-size: 10px; border: none;")
+        size_label.setWordWrap(True)
+        card_layout.addWidget(size_label)
+
+        # Row 3: Progress bar (hidden by default)
+        progress = QProgressBar()
+        progress.setValue(0)
+        progress.setVisible(False)
+        progress.setFixedHeight(18)
+        progress.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #555;
+                border-radius: 4px;
+                text-align: center;
+                font-size: 10px;
+                color: #fff;
+            }
+            QProgressBar::chunk {
+                background-color: #4CAF50;
+            }
+        """)
+        card_layout.addWidget(progress)
+
+        # Row 4: Status text (for download progress)
+        status_text = QLabel("")
+        status_text.setStyleSheet("color: #4CAF50; font-size: 11px; border: none;")
+        status_text.setVisible(False)
+        card_layout.addWidget(status_text)
+
+        # Row 5: Buttons
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+
+        if is_downloaded:
+            dl_btn = QPushButton("Re-download")
+            dl_btn.setStyleSheet("background-color: #555; max-width: 150px;")
+        else:
+            dl_btn = QPushButton("Download")
+            dl_btn.setStyleSheet("background-color: #2196F3; max-width: 150px;")
+
+        dl_btn.setFixedHeight(32)
+        dl_btn.clicked.connect(lambda checked, mn=model_name: self.start_model_download(mn))
+        btn_row.addWidget(dl_btn)
+
+        card_layout.addLayout(btn_row)
+
+        # Store widget references for later updates
+        self._model_cards[model_name] = {
+            "card": card,
+            "status_icon": status_icon,
+            "size_label": size_label,
+            "progress": progress,
+            "status_text": status_text,
+            "dl_btn": dl_btn,
+        }
+
+        return card
+
+    def check_models_on_startup(self):
+        """Check required models and show warning on tab if missing"""
+        missing_required = []
+        for model_name, model_info in MODELS.items():
+            if model_info.get("required", False):
+                is_downloaded, _, _ = check_model_status(model_name)
+                if not is_downloaded:
+                    missing_required.append(model_name)
+
+        if missing_required:
+            self.tabs.setTabText(self.models_tab_index, "[!] Models")
+            self.tabs.tabBar().setTabTextColor(
+                self.models_tab_index,
+                self.tabs.tabBar().tabTextColor(self.models_tab_index)
+            )
+
+    def start_model_download(self, model_name):
+        """Start downloading a model in the background"""
+        if model_name in self._active_downloads:
+            return  # Already downloading
+
+        model_info = MODELS.get(model_name)
+        if not model_info:
+            return
+
+        widgets = self._model_cards.get(model_name)
+        if not widgets:
+            return
+
+        # Update UI
+        widgets["progress"].setValue(0)
+        widgets["progress"].setVisible(True)
+        widgets["status_text"].setText("Downloading...")
+        widgets["status_text"].setVisible(True)
+        widgets["status_text"].setStyleSheet("color: #2196F3; font-size: 11px; border: none;")
+        widgets["dl_btn"].setEnabled(False)
+        widgets["dl_btn"].setText("Downloading...")
+
+        # Start download thread
+        thread = ModelDownloadThread(model_name, model_info)
+        thread.progress_update.connect(
+            lambda pct, mn=model_name: self._on_download_progress(mn, pct)
+        )
+        thread.download_complete.connect(self._on_download_complete)
+        thread.download_error.connect(self._on_download_error)
+        thread.status_update.connect(
+            lambda status, mn=model_name: self._on_download_status(mn, status)
+        )
+        thread.start()
+
+        self._active_downloads[model_name] = thread
+
+    def _on_download_progress(self, model_name, pct):
+        widgets = self._model_cards.get(model_name)
+        if widgets:
+            widgets["progress"].setValue(pct)
+
+    def _on_download_status(self, model_name, status):
+        widgets = self._model_cards.get(model_name)
+        if widgets:
+            widgets["status_text"].setText(status)
+
+    def _on_download_complete(self, model_name):
+        widgets = self._model_cards.get(model_name)
+        if widgets:
+            widgets["progress"].setValue(100)
+            widgets["status_text"].setText("Download complete!")
+            widgets["status_text"].setStyleSheet("color: #4CAF50; font-size: 11px; border: none;")
+            widgets["status_icon"].setText("[OK]")
+            widgets["status_icon"].setStyleSheet("font-size: 12px; font-weight: bold; color: #4CAF50; border: none;")
+            widgets["dl_btn"].setEnabled(True)
+            widgets["dl_btn"].setText("Re-download")
+            widgets["dl_btn"].setStyleSheet("background-color: #555; max-width: 150px;")
+
+            # Update size label
+            is_downloaded, path, current_size = check_model_status(model_name)
+            model_info = MODELS.get(model_name, {})
+            expected_size = model_info.get("size", 0)
+            size_text = f"Size: {format_size(expected_size)}  |  Downloaded: {format_size(current_size)}"
+            if path:
+                size_text += f"  |  {path}"
+            widgets["size_label"].setText(size_text)
+
+        self._active_downloads.pop(model_name, None)
+
+        # Update tab warning
+        self._update_models_tab_badge()
+
+    def _on_download_error(self, model_name, error_msg):
+        widgets = self._model_cards.get(model_name)
+        if widgets:
+            widgets["progress"].setVisible(False)
+            widgets["status_text"].setText(f"Error: {error_msg}")
+            widgets["status_text"].setStyleSheet("color: #f44336; font-size: 11px; border: none;")
+            widgets["dl_btn"].setEnabled(True)
+            widgets["dl_btn"].setText("Retry")
+            widgets["dl_btn"].setStyleSheet("background-color: #f44336; max-width: 150px;")
+
+        self._active_downloads.pop(model_name, None)
+
+    def _update_models_tab_badge(self):
+        """Update the models tab title based on current model status"""
+        has_missing = False
+        for model_name, model_info in MODELS.items():
+            if model_info.get("required", False):
+                is_downloaded, _, _ = check_model_status(model_name)
+                if not is_downloaded:
+                    has_missing = True
+                    break
+
+        self.tabs.setTabText(
+            self.models_tab_index,
+            "[!] Models" if has_missing else "Models"
+        )
+
+    def refresh_model_status(self):
+        """Refresh status of all model cards"""
+        for model_name in list(self._model_cards.keys()):
+            if model_name in self._active_downloads:
+                continue  # Don't refresh while downloading
+            widgets = self._model_cards[model_name]
+            model_info = MODELS.get(model_name, {})
+            is_downloaded, path, current_size = check_model_status(model_name)
+            expected_size = model_info.get("size", 0)
+
+            if is_downloaded:
+                widgets["status_icon"].setText("[OK]")
+                widgets["status_icon"].setStyleSheet("font-size: 12px; font-weight: bold; color: #4CAF50; border: none;")
+            else:
+                widgets["status_icon"].setText("[!!]")
+                widgets["status_icon"].setStyleSheet("font-size: 12px; font-weight: bold; color: #FF9800; border: none;")
+
+            size_text = f"Size: {format_size(expected_size)}"
+            if is_downloaded:
+                size_text += f"  |  Downloaded: {format_size(current_size)}"
+                if path:
+                    size_text += f"  |  {path}"
+            widgets["size_label"].setText(size_text)
+
+            if is_downloaded:
+                widgets["dl_btn"].setText("Re-download")
+                widgets["dl_btn"].setStyleSheet("background-color: #555; max-width: 150px;")
+            else:
+                widgets["dl_btn"].setText("Download")
+                widgets["dl_btn"].setStyleSheet("background-color: #2196F3; max-width: 150px;")
+
+            widgets["progress"].setVisible(False)
+            widgets["status_text"].setVisible(False)
+
+        self._update_models_tab_badge()
+        self.status_label.setText("Model status refreshed")
 
     # --- Live Tab Methods ---
 
@@ -1322,6 +1730,9 @@ class DeepfakeApp(QMainWindow):
             self.stop_camera()
         if self.processing_thread and self.processing_thread.isRunning():
             self.processing_thread.stop()
+        # Cancel active model downloads
+        for thread in self._active_downloads.values():
+            thread.cancel()
         event.accept()
 
 

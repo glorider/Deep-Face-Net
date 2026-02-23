@@ -18,3 +18,11 @@ def swap_face(source_face, target_face, frame):
     face_swapper = get_face_swapper()
 
     return face_swapper.get(frame, target_face, source_face, paste_back=True)
+
+def detect_and_swap(source_face, frame, face_analyser):
+    faces = face_analyser.get(frame)
+    face_count = len(faces)
+    if face_count > 0:
+        for face in faces:
+            frame = swap_face(source_face, face, frame)
+    return frame, face_count
