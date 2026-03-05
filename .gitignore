@@ -137,3 +137,14 @@ testing/
 # Assets (if you want to exclude large files)
 assets/*.mp4
 assets/*.avi
+
+# Cloned dependency folders (GFPGAN, BasicSR cloned locally)
+gfpgan/
+GFPGAN/
+BasicSR/
+basicsr/
+
+# Model weight files anywhere in the tree
+*.pth
+*.pkl
+*.safetensors

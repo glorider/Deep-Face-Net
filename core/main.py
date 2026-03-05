@@ -65,9 +65,16 @@ Examples:
         help="Camera index for webcam mode (default: 0)",
     )
 
-    # Processing options
     parser.add_argument(
-        "--enhance", action="store_true", help="Enable face enhancement (experimental)"
+        "--mode",
+        choices=["swap", "enhance", "swap_enhance"],
+        default="swap",
+        help=(
+            "Processing mode: "
+            "'swap' = face swap only (default), "
+            "'enhance' = GFPGAN enhancement only (no source face needed), "
+            "'swap_enhance' = swap then enhance"
+        ),
     )
 
     parser.add_argument(

@@ -26,27 +26,14 @@
 
 ## Features
 
-### Dual Interface
-- **Modern GUI Application** - Professional PyQt6 interface with dark theme
-- **Command Line Interface** - Powerful CLI for batch processing and automation
-
-### Live Processing
-- **Real-time Webcam Face Swapping** - Swap faces in live video feed
-- **Multiple Camera Support** - Detect and switch between available cameras
-- **Virtual Camera Output** - Stream to OBS, Zoom, Discord, and other apps (optional)
-- **Mouth Mask Feature** - Preserve natural mouth movements
-
-### Offline Processing
-- **Image Processing** - Swap faces in static images
-- **Video Processing** - Process entire video files with face swapping
-- **Drag & Drop Support** - Easy file selection with drag-and-drop interface
-- **Progress Tracking** - Real-time progress bars and status updates
-
-### Advanced Features
-- **Face Detection & Analysis** - Powered by InsightFace's Buffalo_L model
-- **High-Quality Swapping** - Using InSwapper 128 ONNX model
-- **Multi-face Support** - Detect and swap multiple faces simultaneously
-- **Smart Face Masking** - Advanced masking for natural-looking results
+- GUI (PyQt6 dark theme) and CLI support
+- Live webcam face swapping with multiple camera support
+- Offline face swap for images and videos
+- Three processing modes: **Swap Only**, **Enhance Only** (GFPGAN, no source needed), **Swap + Enhance**
+- Virtual camera output for OBS, Zoom, Discord (optional)
+- Mouth mask to preserve natural mouth movements
+- Model status indicators in Live and Offline tabs
+- In-app model downloader with progress tracking
 
 ---
 
@@ -170,7 +157,7 @@ python run.py --source face.jpg --webcam --camera-index 1
 #### Additional Options
 
 ```bash
-python run.py --source face.jpg --target video.mp4 --output result.mp4 --fps 30 --enhance
+python run.py --source face.jpg --target video.mp4 --output result.mp4 --mode swap_enhance
 ```
 
 **Available Options:**
@@ -179,35 +166,8 @@ python run.py --source face.jpg --target video.mp4 --output result.mp4 --fps 30 
 - `--output, -o`: Path to output file
 - `--webcam`: Use webcam for live face swapping
 - `--camera-index`: Camera index for webcam mode (default: 0)
-- `--enhance`: Enable face enhancement (experimental)
+- `--mode`: Processing mode — `swap` (default), `enhance` (no source needed), `swap_enhance`
 - `--fps`: Target FPS for video processing (default: 30)
-
----
-
-## Project Structure
-
-```
-Deep-Face-Net/
-├── app/                          # GUI application
-│   ├── deepfake_app.py          # Main Qt application
-│   ├── video_thread.py          # Video processing thread
-│   ├── file_processing_thread.py # File processing thread
-│   └── drag_drop_widget.py      # Drag & drop widget
-├── core/                         # Core functionality
-│   ├── main.py                  # CLI entry point
-│   ├── config.py                # Configuration settings
-│   ├── face_analyser.py         # Face detection wrapper
-│   ├── image_processor.py       # Image processing
-│   ├── video_processor.py       # Video processing
-│   └── engine/                  # Processing engines
-│       ├── face_swapper.py      # Face swapping logic
-│       ├── face_masking.py      # Face masking utilities
-│       ├── face_enhancer.py     # Face enhancement
-├── models/                       # Pre-trained models (not included)
-├── testing/                      # Test files and samples
-├── run.py                        # Main entry point
-└── README.md                     # This file
-```
 
 ---
 
@@ -220,26 +180,6 @@ Settings are stored in `core/config.py`:
 - **Face Detection**: Detection size and confidence threshold
 
 User preferences (working directory, etc.) are saved in `~/.deepfacenet_settings.json`
-
----
-
-## How It Works
-
-1. **Face Detection**: Uses InsightFace's Buffalo_L model to detect faces in source and target
-2. **Face Analysis**: Extracts facial landmarks and embeddings
-3. **Face Swapping**: Uses InSwapper model to swap faces while preserving expressions
-4. **Post-Processing**: Optional face enhancement and masking for natural results
-5. **Output**: Renders the final result to screen, file, or virtual camera
-
----
-
-## Limitations & Known Issues
-
-- **GPU Acceleration**: ONNX Runtime with CUDA support recommended for real-time performance
-- **Face Quality**: Works best with clear, front-facing faces
-- **Lighting**: Significant lighting differences may affect quality
-- **Multiple Faces**: Swaps all detected faces in the frame
-- **Video Processing**: Large videos may take considerable time to process
 
 ---
 
@@ -256,6 +196,36 @@ pip install coloredlogs flatbuffers numpy packaging protobuf sympy
 # Install onnxruntime-gpu nightly with CUDA 13 support
 pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-13-nightly/pypi/simple/ onnxruntime-gpu
 ```
+
+---
+
+### BasicSR / GFPGAN Installation Issues
+
+`gfpgan` requires **BasicSR**, which can fail to build from PyPI on many systems (missing headers, PEP 517 errors, CUDA mismatch). The recommended approach is to clone both from source.
+
+**Step 1 — Install BasicSR from the maintained fork** (fixes common build failures):
+
+```bash
+git clone https://github.com/MIDHUNGRAJ/BasicSR.git
+cd BasicSR
+pip install -e .
+cd ..
+```
+
+> This fork uses `pyproject.toml` instead of the legacy `setup.py`, avoiding most build errors.
+
+**Step 2 — Install GFPGAN from source:**
+
+```bash
+git clone https://github.com/TencentARC/GFPGAN.git
+cd GFPGAN
+pip install facexlib
+pip install -r requirements.txt
+python setup.py develop
+cd ..
+```
+
+After this, GFPGAN will be available system-wide and the Enhance modes in Deep Face Net will work correctly.
 
 ---
 
@@ -298,6 +268,8 @@ This project uses the following open-source technologies:
 
 - [InsightFace](https://github.com/deepinsight/insightface) - Face analysis and recognition
 - [InSwapper](https://github.com/haofanwang/inswapper) - Face swapping model
+- [GFPGAN](https://github.com/TencentARC/GFPGAN) - Face enhancement model
+- [BasicSR](https://github.com/MIDHUNGRAJ/BasicSR) - Super-resolution backbone (maintained fork)
 - [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) - GUI framework
 - [OpenCV](https://opencv.org/) - Computer vision library
 - [ONNX Runtime](https://onnxruntime.ai/) - Model inference

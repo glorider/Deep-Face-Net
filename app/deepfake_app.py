@@ -32,6 +32,8 @@ from PyQt6.QtWidgets import (
     QStatusBar,
     QFrame,
     QCheckBox,
+    QRadioButton,
+    QButtonGroup,
     QTabWidget,
     QProgressBar,
     QDialog,
@@ -474,8 +476,102 @@ class DeepfakeApp(QMainWindow):
         """)
         self.btn_start_process.clicked.connect(self.start_offline_processing)
 
+        # ── Processing Mode ────────────────────────────────────────────────────
+        from core.config import ENHANCER_MODEL, SWAPPER_MODEL
+        _gfpgan_ok  = ENHANCER_MODEL.exists()
+        _swapper_ok = SWAPPER_MODEL.exists()
+
+        mode_group_box = QGroupBox("3. Processing Mode")
+        mode_group_box.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold; font-size: 12px; color: #fff;
+                border: 2px solid #444; border-radius: 8px;
+                margin-top: 10px; padding-top: 14px;
+                background-color: #2a2a2a;
+            }
+            QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }
+        """)
+        mode_inner = QVBoxLayout()
+        mode_inner.setSpacing(4)
+        mode_inner.setContentsMargins(10, 10, 10, 10)
+
+        radio_style = "QRadioButton {{ color: {c}; font-size: 12px; padding: 3px 0; }}"
+
+        self._mode_btn_group = QButtonGroup(self)
+
+        self.radio_swap = QRadioButton("Swap Only")
+        self.radio_swap.setChecked(True)
+        self.radio_swap.setToolTip("Replace faces in target with your source face.")
+        self.radio_swap.setStyleSheet(radio_style.format(c="#ccc"))
+        self.radio_swap.toggled.connect(self.check_offline_readiness)
+        self._mode_btn_group.addButton(self.radio_swap)
+
+        self.radio_enhance = QRadioButton("Enhance Only  (no swap)")
+        self.radio_enhance.setEnabled(_gfpgan_ok)
+        self.radio_enhance.setToolTip(
+            "Sharpen faces in target using GFPGAN — no source face needed."
+            if _gfpgan_ok else
+            "Download GFPGANv1.4.pth from the Models tab first."
+        )
+        self.radio_enhance.setStyleSheet(radio_style.format(c="#ccc" if _gfpgan_ok else "#666"))
+        self.radio_enhance.toggled.connect(self.check_offline_readiness)
+        self._mode_btn_group.addButton(self.radio_enhance)
+
+        self.radio_swap_enhance = QRadioButton("Swap + Enhance")
+        self.radio_swap_enhance.setEnabled(_gfpgan_ok)
+        self.radio_swap_enhance.setToolTip(
+            "Swap faces, then run GFPGAN for sharper results."
+            if _gfpgan_ok else
+            "Download GFPGANv1.4.pth from the Models tab first."
+        )
+        self.radio_swap_enhance.setStyleSheet(radio_style.format(c="#ccc" if _gfpgan_ok else "#666"))
+        self.radio_swap_enhance.toggled.connect(self.check_offline_readiness)
+        self._mode_btn_group.addButton(self.radio_swap_enhance)
+
+        mode_inner.addWidget(self.radio_swap)
+        mode_inner.addWidget(self.radio_enhance)
+        mode_inner.addWidget(self.radio_swap_enhance)
+
+        # ── Model status pills ─────────────────────────────────────────────────
+        pills_row = QHBoxLayout()
+        pills_row.setSpacing(6)
+
+        def _make_pill(label, ok):
+            p = QLabel(f"{'✓' if ok else '✗'}  {label}")
+            p.setStyleSheet(
+                f"background: {'#1b3a1b' if ok else '#3a1b1b'}; "
+                f"color: {'#4CAF50' if ok else '#f44336'}; "
+                "border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: bold;"
+            )
+            return p
+
+        pills_row.addWidget(_make_pill("Swap model", _swapper_ok))
+        pills_row.addWidget(_make_pill("GFPGAN", _gfpgan_ok))
+        pills_row.addStretch()
+        mode_inner.addSpacing(6)
+        mode_inner.addLayout(pills_row)
+
+        if not _gfpgan_ok:
+            missing_lbl = QLabel("  GFPGAN not downloaded — go to Models tab")
+            missing_lbl.setStyleSheet("color: #f44336; font-size: 11px; padding-top: 2px;")
+            mode_inner.addWidget(missing_lbl)
+
+        mode_group_box.setLayout(mode_inner)
+
         status_inner.addWidget(self.process_info_label)
         status_inner.addWidget(self.progress_bar)
+
+        # Download status indicator — shown when GFPGAN fetches auxiliary models
+        self.download_status_label = QLabel()
+        self.download_status_label.setWordWrap(True)
+        self.download_status_label.setStyleSheet(
+            "color: #FF9800; font-size: 11px; padding: 2px 4px;"
+            "background: #2a1f00; border-radius: 4px;"
+        )
+        self.download_status_label.setVisible(False)
+
+        status_inner.addWidget(self.download_status_label)
+        status_inner.addWidget(mode_group_box)
         status_inner.addWidget(self.btn_start_process)
 
         # Result Actions
@@ -1038,6 +1134,43 @@ class DeepfakeApp(QMainWindow):
         camera_group.setLayout(camera_layout)
         layout.addWidget(camera_group)
 
+        # ── Model status (Live tab) ───────────────────────────────────────────
+        from core.config import ENHANCER_MODEL, SWAPPER_MODEL
+        live_models_group = QGroupBox("Model Status")
+        live_models_layout = QVBoxLayout()
+        live_models_layout.setContentsMargins(10, 20, 10, 10)
+        live_models_layout.setSpacing(5)
+
+        _models_to_show = [
+            ("Swap (inswapper)", SWAPPER_MODEL.exists()),
+            ("Enhance (GFPGAN)", ENHANCER_MODEL.exists()),
+        ]
+        for name, ok in _models_to_show:
+            row = QHBoxLayout()
+            dot = QLabel("●")
+            dot.setFixedWidth(16)
+            dot.setStyleSheet(f"color: {'#4CAF50' if ok else '#f44336'}; font-size: 14px; border: none;")
+            lbl = QLabel(name)
+            lbl.setStyleSheet(f"color: {'#ccc' if ok else '#888'}; font-size: 11px; border: none;")
+            status = QLabel("Ready" if ok else "Not downloaded")
+            status.setStyleSheet(f"color: {'#4CAF50' if ok else '#f44336'}; font-size: 11px; border: none;")
+            row.addWidget(dot)
+            row.addWidget(lbl)
+            row.addStretch()
+            row.addWidget(status)
+            live_models_layout.addLayout(row)
+
+        goto_btn = QPushButton("→ Go to Models Tab")
+        goto_btn.setStyleSheet("""
+            QPushButton { background-color: #333; color: #58a6ff; font-size: 11px;
+                          border: 1px solid #444; border-radius: 4px; padding: 4px 8px; }
+            QPushButton:hover { background-color: #444; }
+        """)
+        goto_btn.clicked.connect(lambda: self.tabs.setCurrentIndex(self.models_tab_index))
+        live_models_layout.addWidget(goto_btn)
+        live_models_group.setLayout(live_models_layout)
+        layout.addWidget(live_models_group)
+
         # Info section
         info_group = QGroupBox("Information")
         info_layout = QVBoxLayout()
@@ -1544,31 +1677,99 @@ class DeepfakeApp(QMainWindow):
         self.process_info_label.setText("Select a source face and a target file to begin.")
 
     def check_offline_readiness(self):
-        """Enable start button if all inputs are ready"""
-        if self.offline_source_face is not None and self.target_file_path is not None:
-            self.btn_start_process.setEnabled(True)
-            self.process_info_label.setText("Ready to process.")
+        """Enable start button if all required inputs are ready.
+        Enhance Only mode does not need a source face."""
+        enhance_only = self.radio_enhance.isChecked()
+        has_target = self.target_file_path is not None
+
+        # Dim the source section label when enhance-only is selected
+        if hasattr(self, "offline_source_preview"):
+            self.offline_source_preview.setEnabled(not enhance_only)
+
+        if enhance_only:
+            ready = has_target
         else:
-            self.btn_start_process.setEnabled(False)
+            ready = (self.offline_source_face is not None) and has_target
+
+        self.btn_start_process.setEnabled(ready)
+        if ready:
+            if enhance_only:
+                self.process_info_label.setText("Ready to enhance — no source face needed.")
+            else:
+                self.process_info_label.setText("Ready to process.")
+        else:
+            if enhance_only:
+                self.process_info_label.setText("Select a target file to begin (no source needed for Enhance Only).")
+            else:
+                self.process_info_label.setText("Select a source face and a target file to begin.")
 
     def start_offline_processing(self):
         """Start the offline processing thread"""
-        if not self.target_file_path or self.offline_source_face is None:
+        from app.file_processing_thread import MODE_SWAP, MODE_ENHANCE, MODE_SWAP_ENHANCE
+        from core.config import ENHANCER_MODEL
+
+        # Determine mode from radio buttons
+        if self.radio_enhance.isChecked():
+            mode = MODE_ENHANCE
+        elif self.radio_swap_enhance.isChecked():
+            mode = MODE_SWAP_ENHANCE
+        else:
+            mode = MODE_SWAP
+
+        needs_source = mode != MODE_ENHANCE
+        if needs_source and self.offline_source_face is None:
+            return
+        if not self.target_file_path:
+            return
+
+        # Guard: GFPGAN model must exist for enhance modes
+        if mode in (MODE_ENHANCE, MODE_SWAP_ENHANCE) and not ENHANCER_MODEL.exists():
+            QMessageBox.warning(
+                self,
+                "GFPGAN Model Missing",
+                f"Enhancement model not found:\n{ENHANCER_MODEL}\n\n"
+                "Please download it from the Models tab first."
+            )
             return
 
         self.btn_start_process.setEnabled(False)
         self.progress_bar.setValue(0)
-        
+
         self.processing_thread = FileProcessingThread(
-            self.offline_source_face, 
-            self.target_file_path
+            self.offline_source_face,
+            self.target_file_path,
+            mode=mode,
         )
-        self.processing_thread.progress_update.connect(self.progress_bar.setValue)
-        self.processing_thread.status_update.connect(self.process_info_label.setText)
+        self.processing_thread.progress_update.connect(self._handle_offline_progress)
+        self.processing_thread.status_update.connect(self._handle_offline_status)
         self.processing_thread.finished_processing.connect(self.on_processing_finished)
         self.processing_thread.error_occurred.connect(self.on_processing_error)
-        
         self.processing_thread.start()
+
+    def _handle_offline_progress(self, value: int):
+        """Handle progress signal: -1 means indeterminate (GFPGAN init/download)."""
+        if value == -1:
+            self.progress_bar.setRange(0, 0)   # pulsing / indeterminate
+        else:
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(value)
+            if value > 0:
+                self.download_status_label.setVisible(False)
+
+    def _handle_offline_status(self, text: str):
+        """Route status updates: download lines go to the orange indicator label."""
+        low = text.lower()
+        is_download = text.startswith("\u2193 ") or any(
+            k in low for k in ("download", "loading gfpgan", "auxiliary")
+        )
+        if is_download:
+            self.download_status_label.setText(text)
+            self.download_status_label.setVisible(True)
+        else:
+            # For non-download messages, update the main info label
+            self.process_info_label.setText(text)
+            if "ready" in low or "complete" in low:
+                self.download_status_label.setVisible(False)
 
     def on_processing_finished(self, output_path):
         """Handle processing completion"""

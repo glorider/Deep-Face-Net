@@ -13,6 +13,9 @@ SWAPPER_MODEL = (
     MODELS_DIR / "inswapper_128.onnx"
 )  # higher model inswapper_128_fp16.onnx
 
+ENHANCER_MODEL = MODELS_DIR / "GFPGANv1.4.pth"
+ENHANCE_WEIGHT = 0.6  # blend strength: 0 = full GFPGAN, 1 = original face
+
 INSIGHTFACE_DIR = Path.home() / ".insightface" / "models"
 BUFFALO_L_DIR = INSIGHTFACE_DIR / "buffalo_l"
 
